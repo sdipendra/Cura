@@ -58,6 +58,13 @@ class MachineManager(QObject):
         self._error_check_timer.setSingleShot(True)
         self._error_check_timer.timeout.connect(self._updateStacksHaveErrors)
 
+        # self._limited_error_check_timer = QTimer()
+        # self._limited_error_check_timer.setInterval(250)
+        # self._limited_error_check_timer.setSingleShot(True)
+        # self._limited_error_check_timer.timeout.connect(self._updateStacksHaveLimitedErrors)
+
+        self._all_errors_check_flag = True
+
         self._instance_container_timer = QTimer()
         self._instance_container_timer.setInterval(250)
         self._instance_container_timer.setSingleShot(True)
@@ -315,13 +322,24 @@ class MachineManager(QObject):
 
         self._error_check_timer.start()
 
+    # def _updateStacksHaveLimitedErrors(self):
+    #     old_stacks_have_errors = self._stacks_have_errors
+    #     self._stacks_have_errors = self._checkStacksHaveErrors(check_all_properties = False)
+    #     if old_stacks_have_errors != self._stacks_have_errors:
+    #         self.stacksValidationChanged.emit()
+    #     Application.getInstance().stacksValidationFinished.emit()
+
     ##  Update self._stacks_valid according to _checkStacksForErrors and emit if change.
     def _updateStacksHaveErrors(self):
         old_stacks_have_errors = self._stacks_have_errors
-        self._stacks_have_errors = self._checkStacksHaveErrors()
+        if self._all_errors_check_flag is None:
+            self._all_errors_check_flag = True
+        self._stacks_have_errors = self._checkStacksHaveErrors(check_all_properties = self._all_errors_check_flag)
         if old_stacks_have_errors != self._stacks_have_errors:
             self.stacksValidationChanged.emit()
         Application.getInstance().stacksValidationFinished.emit()
+
+        self._all_errors_check_flag = None
 
     def _onActiveExtruderStackChanged(self):
         self.blurSettings.emit()  # Ensure no-one has focus.
@@ -362,7 +380,13 @@ class MachineManager(QObject):
             self.activeStackValueChanged.emit()
 
         elif property_name == "validationState":
+            if self._all_errors_check_flag is None:
+                self._all_errors_check_flag = False
             self._error_check_timer.start()
+
+
+            # if not self._error_check_timer.isActive():
+            #     self._limited_error_check_timer.start()
 
     @pyqtSlot(str)
     def setActiveMachine(self, stack_id: str) -> None:
@@ -386,14 +410,14 @@ class MachineManager(QObject):
         else:
             Logger.log("w", "Failed creating a new machine!")
 
-    def _checkStacksHaveErrors(self) -> bool:
+    def _checkStacksHaveErrors(self, check_all_properties = True) -> bool:
         if self._global_container_stack is None: #No active machine.
             return False
 
-        if self._global_container_stack.hasErrors():
+        if self._global_container_stack.hasErrors(check_all_properties = check_all_properties):
             return True
         for stack in ExtruderManager.getInstance().getMachineExtruders(self._global_container_stack.getId()):
-            if stack.hasErrors():
+            if stack.hasErrors(check_all_properties = check_all_properties):
                 return True
 
         return False
